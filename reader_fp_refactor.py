@@ -59,16 +59,12 @@ class DataReader:
         assert len(years) > 0
 
         return years
+    
+    def validate_years(self, directory, years, lat_points, lon_points):
+        '''
+        creates layer data and years, ensures we can load and that the shape is correct
+        '''
 
-    def scan_input_data(self, data_root, land_xy_file, subregion=None,
-                        year_min=None, year_max=None, years_only=None):
-        lat_points, lon_points = 4320, 8640
-        
-        years = self.scan_input_dir(data_root, year_min, year_max, years_only)
-
-
-        # now go through the years and make sure we can load each layer and
-        #  that it looks reasonable
         self.layer_data = {}
         self.valid_years = []
         for y in years:
@@ -79,7 +75,7 @@ class DataReader:
                             'prcptn': 'ppt',
                             'windspeed': 'ws' }
                 nc_label = relabel.get(l, l)
-                layer_file = os.path.join(data_root, l + '_terra', f'TerraClimate_{nc_label}_{y}.nc')
+                layer_file = os.path.join(directory, l + '_terra', f'TerraClimate_{nc_label}_{y}.nc')
                 try:
                     xarray_data = xr.open_dataset(layer_file)
                     data = xarray_data[nc_label]
@@ -97,8 +93,17 @@ class DataReader:
             if layers:
                 self.layer_data[y] = layers
                 self.valid_years.append(y)
-
+        print(f'Valid years {self.valid_years}')
         self.valid_years.sort()
+         
+
+    def scan_input_data(self, data_root, land_xy_file, subregion=None,
+                        year_min=None, year_max=None, years_only=None):
+        lat_points, lon_points = 4320, 8640
+        
+        years = self.scan_input_dir(data_root, year_min, year_max, years_only)
+        self.validate_years(data_root, years, lat_points, lon_points)
+
 
         # read or generate list of land xy locations
         self.land_xys = None
