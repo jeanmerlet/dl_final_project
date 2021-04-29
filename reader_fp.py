@@ -15,7 +15,7 @@ class DataReader:
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-        #self.layers = ['prcptn', 'vap']
+        self.layers = ['prcptn']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -35,16 +35,12 @@ class DataReader:
     def num_output_layers(self):
         return len(self.layers)
 
-    def scan_input_data(self, data_root, land_xy_file, subregion=None,
-                        year_min=None, year_max=None, years_only=None):
-        lat_points, lon_points = 4320, 8640
-        
-        # scan the data directory to see which years are represented
-        # we'll need all the layers, so arbitrarily use the first year to make
-        # our list
+    def scan_input_dir(self, directory, year_min = None, year_max = None, years_only = None):
+        '''
+        Takes in a directory, determines number of years that are valid with the input data and th edirectory
+        '''
         years = []
-
-        scan_dir = os.path.join(data_root, self.layers[0] + '_terra')
+        scan_dir = os.path.join(directory, self.layers[0] + '_terra')
         for f in os.listdir(scan_dir):
             m = re.search(r'_(\d+).nc$', f)
             if m:
@@ -62,8 +58,13 @@ class DataReader:
                                                             ', '.join(map(str, years))))
         assert len(years) > 0
 
-        # now go through the years and make sure we can load each layer and
-        #  that it looks reasonable
+        return years
+    
+    def validate_years(self, directory, years, lat_points, lon_points):
+        '''
+        creates layer data and years, ensures we can load and that the shape is correct
+        '''
+
         self.layer_data = {}
         self.valid_years = []
         for y in years:
@@ -74,7 +75,7 @@ class DataReader:
                             'prcptn': 'ppt',
                             'windspeed': 'ws' }
                 nc_label = relabel.get(l, l)
-                layer_file = os.path.join(data_root, l + '_terra', f'TerraClimate_{nc_label}_{y}.nc')
+                layer_file = os.path.join(directory, l + '_terra', f'TerraClimate_{nc_label}_{y}.nc')
                 try:
                     xarray_data = xr.open_dataset(layer_file)
                     data = xarray_data[nc_label]
@@ -92,58 +93,67 @@ class DataReader:
             if layers:
                 self.layer_data[y] = layers
                 self.valid_years.append(y)
-
+        print(f'Valid years {self.valid_years}')
         self.valid_years.sort()
+         
 
-        # read or generate list of land xy locations
-        self.land_xys = None
-        if land_xy_file:
-            try:
+    def load_land_file(self, land_xy_file, lat_points, lon_points):
+        try:
                 self.land_xys = np.load(land_xy_file)
                 if self.verbose:
                     print('{} points loaded from file'.format(len(self.land_xys)))
                 self.is_land = np.full((lat_points, lon_points), False)
                 self.is_land[self.land_xys[:,0], self.land_xys[:,1]] = True
-            except FileNotFoundError:
+        except FileNotFoundError:
                 pass
-        if self.land_xys is None:
-            # compute it ourselves
-            print('Computing land locations...', end='', flush=True)
-            # any layer should do
-            l = self.layer_data[self.valid_years[0]][self.layers[0]]
-            self.is_land = np.logical_not(np.isnan(l.data[0,:,:]))
-            # trim off polar regions (60+ latitude)
-            self.is_land[0:(lat_points // 6), :] = False
-            self.is_land[(5 * lat_points // 6):, :] = False
-            # subset to rectangular area if asked
-            if subregion is not None:
-                lat_range, lon_range = subregion
-                lat_min, lat_max = lat_range
-                lon_min, lon_max = lon_range
-                lat_min_idx = 2160 - (lat_max * 24)
-                lat_max_idx = 2160 - (lat_min * 24)
-                lon_min_idx = -(4320 - (lon_min * 24))
-                lon_max_idx = -(4320 - (lon_max * 24))
-                #print(lat_min_idx, lat_max_idx, lon_min_idx, lon_max_idx)
-                self.is_land[:lat_min_idx-1, :] = False
-                self.is_land[lat_max_idx:, :] = False
-                self.is_land[:, :lon_min_idx-1] = False
-                self.is_land[:, lon_max_idx:] = False
-            #print(np.argwhere(self.is_land == True)[0])
 
-            #self.land_xys = list(zip(*self.is_land.nonzero()))
-            self.land_xys = list(zip(*([self.is_land.nonzero()[0][0]], [self.is_land.nonzero()[1][0]])))
-            print(f'{len(self.land_xys)} points found on land')
-            print(self.land_xys)
+    def apply_subregion(self, subregion):
+        #sets any values outside the subregion in the is_land file to False
+        lat_range, lon_range = subregion
+        lat_min, lat_max = lat_range
+        lon_min, lon_max = lon_range
+        lat_min_idx = 2160 - (lat_max * 24)
+        lat_max_idx = 2160 - (lat_min * 24)
+        lon_min_idx = -(4320 - (lon_min * 24))
+        lon_max_idx = -(4320 - (lon_max * 24))
+        self.is_land[:lat_min_idx-1, :] = False
+        self.is_land[lat_max_idx:, :] = False
+        self.is_land[:, :lon_min_idx-1] = False
+        self.is_land[:, lon_max_idx:] = False
+    
 
-            # and try to save it if we've been given a location
-            if land_xy_file:
-                try:
-                    np.save(land_xy_file, self.land_xys)
-                    if self.verbose:
-                        print('saved land xy data to "{}"'.format(land_xy_file))
-                except Exception as e:
-                    print('FAILED to write land xy data to "{}": {}'.format(land_xy_file, e))
+    def compute_land_file(self, lat_points, subregion = None):
+        print('Computing land locations...', end='', flush=True)
+        # any layer should do
+        l = self.layer_data[self.valid_years[0]][self.layers[0]]
+        self.is_land = np.logical_not(np.isnan(l.data[0,:,:]))
+        # trim off polar regions (60+ latitude)
+        self.is_land[0:(lat_points // 6), :] = False
+        self.is_land[(5 * lat_points // 6):, :] = False
+        if subregion is not None: self.apply_subregion(subregion)
+        self.land_xys = list(zip(*([self.is_land.nonzero()[0][0]], [self.is_land.nonzero()[1][0]])))
+        print(f'{len(self.land_xys)} points found on land')
+        print(self.land_xys)
+
+    def save_land(self, land_xy_file):
+        try:
+            np.save(land_xy_file, self.land_xys)
+            if self.verbose:
+                print('saved land xy data to "{}"'.format(land_xy_file))
+        except Exception as e:
+            print('FAILED to write land xy data to "{}": {}'.format(land_xy_file, e))
+
+    def scan_input_data(self, data_root, land_xy_file, subregion=None,
+                        year_min=None, year_max=None, years_only=None):
+        lat_points, lon_points = 4320, 8640
+        years = self.scan_input_dir(data_root, year_min, year_max, years_only)
+        self.validate_years(data_root, years, lat_points, lon_points)
+        # read or generate list of land xy locations
+        self.land_xys = None
+        if land_xy_file: self.load_land_file(land_xy_file, lat_points, lon_points)
+        if self.land_xys is None: #the previous line would have updated self.land_xys if a file existed
+            self.compute_land_file(self, subregion, lat_points)
+            if land_xy_file: self.save_land(land_xy_file)
 
 
     def configure_batch(self, batch_size, window_size, dtype):

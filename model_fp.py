@@ -32,7 +32,7 @@ parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
 parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
-parser.add_argument('-n', '--num-iterations', type=int, default=200,
+parser.add_argument('-n', '--num-iterations', type=int, default=100,
                     help='number of batches to use for training')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
@@ -74,6 +74,23 @@ for n in range(args.num_iterations):
 
 np.set_printoptions(suppress=True)
 predictions = np.round(model.predict(batch_data), 2)
+for i, l in enumerate(reader.layers):
+    print(f'predictions for {l}:')
+    print(predictions[:, i, :])
+    print(f'ground truth for {l}:')
+    print(target_data[:, i, :])
+    print('')
+
+# try to predict the following year
+print('** using the model to predict the following year **')
+reader.scan_input_data(data_root = args.data,
+                       land_xy_file = args.land,
+                       years_only = [1989, 1990],
+                       subregion=[[0, 4], [46, 50]])
+batch_data, target_data = reader.next_batch()
+batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
+predictions = np.round(model.predict(batch_data), 2)
+
 for i, l in enumerate(reader.layers):
     print(f'predictions for {l}:')
     print(predictions[:, i, :])
