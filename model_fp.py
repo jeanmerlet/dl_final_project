@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.keras import models, layers, optimizers
 from reader_fp import DataReader
 import argparse
+import time
 
 def basic_cnn(num_input_layers, num_output_layers, window_diam):
     model = models.Sequential()
@@ -32,7 +33,7 @@ parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
 parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
-parser.add_argument('-n', '--num-iterations', type=int, default=200,
+parser.add_argument('-n', '--num-iterations', type=int, default=100,
                     help='number of batches to use for training')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
@@ -46,7 +47,8 @@ reader = DataReader(verbose = args.verbose)
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
                        years_only = [1988, 1989],
-                       subregion=[[0, 4], [46, 50]])
+                       point = (48.86, 2.34))
+                       #subregion = [[43, 49], [-2, 7]])
 # configure batches
 reader.configure_batch(batch_size = args.batch,
                        window_size = args.window,
@@ -62,6 +64,7 @@ opt = tf.keras.optimizers.SGD(lr=args.lr)
 model.compile(loss=loss, optimizer=opt)
 
 # train
+start = time.time()
 for n in range(args.num_iterations):
     batch_data, target_data = reader.next_batch()
     batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
@@ -72,8 +75,27 @@ for n in range(args.num_iterations):
     opt.apply_gradients(zip(grads, model.trainable_weights))
     print(f'iteration {n}/{args.num_iterations}, loss={loss_value}')
 
+print(f'total train time: {time.time() - start}')
+
 np.set_printoptions(suppress=True)
 predictions = np.round(model.predict(batch_data), 2)
+for i, l in enumerate(reader.layers):
+    print(f'predictions for {l}:')
+    print(predictions[:, i, :])
+    print(f'ground truth for {l}:')
+    print(target_data[:, i, :])
+    print('')
+
+# try to predict the following year
+print('** using the model to predict the following year **')
+reader.scan_input_data(data_root = args.data,
+                       land_xy_file = args.land,
+                       years_only = [1989, 1990],
+                       subregion=[[0, 4], [46, 50]])
+batch_data, target_data = reader.next_batch()
+batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
+predictions = np.round(model.predict(batch_data), 2)
+
 for i, l in enumerate(reader.layers):
     print(f'predictions for {l}:')
     print(predictions[:, i, :])
