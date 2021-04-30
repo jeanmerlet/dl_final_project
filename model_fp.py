@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.keras import models, layers, optimizers
 from reader_fp import DataReader
 import argparse
+import time
 
 def basic_cnn(num_input_layers, num_output_layers, window_diam):
     model = models.Sequential()
@@ -26,7 +27,7 @@ def basic_cnn(num_input_layers, num_output_layers, window_diam):
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Projects/NV_ORNL_XAIClimate/data/climate_layers/primary/TerraClim',
                     help='path to dataset')
-parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/paris.npy',
+parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/test.npy',
                     help='path to list of land coordinates')
 parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
@@ -44,9 +45,10 @@ args = parser.parse_args()
 reader = DataReader(verbose = args.verbose)
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
-                       land_xy_file = args.land,
-                       years_only = [1988, 1989],
-                       subregion=[[0, 4], [46, 50]])
+                       land_xy_file = args.land)
+                       years_only = [1988, 1989]),
+                       point = (48.86, 2.34))
+                       #subregion = [[43, 49], [-2, 7]])
 # configure batches
 reader.configure_batch(batch_size = args.batch,
                        window_size = args.window,
@@ -62,6 +64,7 @@ opt = tf.keras.optimizers.SGD(lr=args.lr)
 model.compile(loss=loss, optimizer=opt)
 
 # train
+start = time.time()
 for n in range(args.num_iterations):
     batch_data, target_data = reader.next_batch()
     batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
@@ -71,6 +74,8 @@ for n in range(args.num_iterations):
     grads = tape.gradient(loss_value, model.trainable_weights)
     opt.apply_gradients(zip(grads, model.trainable_weights))
     print(f'iteration {n}/{args.num_iterations}, loss={loss_value}')
+
+print(f'total train time: {time.time() - start}')
 
 np.set_printoptions(suppress=True)
 predictions = np.round(model.predict(batch_data), 2)
