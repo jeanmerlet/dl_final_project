@@ -27,7 +27,7 @@ def basic_cnn(num_input_layers, num_output_layers, window_diam):
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Projects/NV_ORNL_XAIClimate/data/climate_layers/primary/TerraClim',
                     help='path to dataset')
-parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/test.npy',
+parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/paris.npy',
                     help='path to list of land coordinates')
 parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
@@ -45,8 +45,8 @@ args = parser.parse_args()
 reader = DataReader(verbose = args.verbose)
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
-                       land_xy_file = args.land)
-                       years_only = [1988, 1989]),
+                       land_xy_file = args.land,
+                       years_only = [1988, 1989],
                        point = (48.86, 2.34))
                        #subregion = [[43, 49], [-2, 7]])
 # configure batches
