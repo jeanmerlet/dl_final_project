@@ -181,12 +181,12 @@ class DataReader:
         self.window_size = window_size
         self.dtype = dtype
 
-    def next_batch(self):
+    def next_batch(self, ny):
         # samples in a given batch will always use the same reference year
         # don't allow the last year as we need it for loss
-        ref_y = random.choice(self.valid_years[:-1])
+        start_y = random.choice(self.valid_years[:-ny])
         # TODO: add logic to correctly calculate reference year for a RNN
-        tgt_y = ref_y + 1
+        tgt_y = start_y + ny
 
         in_data = []
         tgt_data = []
@@ -199,24 +199,25 @@ class DataReader:
             window_data = np.nan
             while np.isnan(window_data).any():
                 lat, lon = random.choice(self.land_xys)
-                layer_data = self.layer_data[ref_y][self.layers[0]]
+                layer_data = self.layer_data[start_y][self.layers[0]]
                 window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
                                             (lon - self.window_size) : (lon + self.window_size + 1)]
 
-            tostack = []
-            for l in self.layers:
-                layer_data = self.layer_data[ref_y][l]
-                window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
+            for ref_y in range(start_y, tgt_y):
+                tostack = []
+                for l in self.layers:
+                    layer_data = self.layer_data[ref_y][l]
+                    window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
                                             (lon - self.window_size) : (lon + self.window_size + 1)]
-                tostack.append(window_data.astype(self.dtype))
-            # now add on extra layers, if any
-            for el in self.extra_layers:
-                if el == 'land':
-                    window_data = self.is_land[(lat - self.window_size) : (lat + self.window_size + 1),
-                                               (lon - self.window_size) : (lon + self.window_size + 1)]
                     tostack.append(window_data.astype(self.dtype))
+                # now add on extra layers, if any
+                for el in self.extra_layers:
+                    if el == 'land':
+                        window_data = self.is_land[(lat - self.window_size) : (lat + self.window_size + 1),
+                                               (lon - self.window_size) : (lon + self.window_size + 1)]
+                        tostack.append(window_data.astype(self.dtype))
 
-            in_data.append(np.stack(tostack))
+                in_data.append(np.stack(tostack))
 
             # we also need single-location climate data for the target year
             tgt_data.append([ self.layer_data[tgt_y][l][:, lat, lon] for l in self.layers ])

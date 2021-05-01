@@ -12,9 +12,9 @@ from reader_fp import DataReader
 import argparse
 import time
 
-def basic_cnn(num_input_layers, num_output_layers, window_diam):
+def basic_cnn(num_input_layers, num_output_layers, window_diam, nyears):
     model = models.Sequential()
-    model.add(layers.Conv2D(filters=32, kernel_size=3, activation='relu', input_shape=(window_diam, window_diam, 12*num_input_layers)))
+    model.add(layers.Conv2D(filters=32, kernel_size=3, activation='relu', input_shape=(window_diam, window_diam, nyears*12*num_input_layers)))
     model.add(layers.BatchNormalization())
     model.add(layers.Flatten())
     model.add(layers.Dense(64, activation='relu'))
@@ -39,6 +39,7 @@ parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
 parser.add_argument('-v', '--verbose', action='store_true',
                     help='generate verbose output')
+parser.add_argument('-y', '--years', type=int, default=1, help = 'number of years for training data')
 args = parser.parse_args()
 
 # instantiate DataReader
@@ -46,7 +47,7 @@ reader = DataReader(verbose = args.verbose)
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       years_only = [1988, 1989],
+                       year_min = 1980, year_max = 1990,
                        point = (48.86, 2.34))
                        #subregion = [[43, 49], [-2, 7]])
 # configure batches
@@ -58,7 +59,7 @@ reader.configure_batch(batch_size = args.batch,
 window_diam = 2 * args.window + 1
 model = basic_cnn(reader.num_input_layers(),
                   reader.num_output_layers(),
-                  window_diam)
+                  window_diam, args.years)
 loss = tf.keras.losses.MeanSquaredError()
 opt = tf.keras.optimizers.SGD(lr=args.lr)
 model.compile(loss=loss, optimizer=opt)
@@ -66,8 +67,8 @@ model.compile(loss=loss, optimizer=opt)
 # train
 start = time.time()
 for n in range(args.num_iterations):
-    batch_data, target_data = reader.next_batch()
-    batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
+    batch_data, target_data = reader.next_batch(args.years)
+    batch_data = batch_data.reshape(1, window_diam, window_diam, args.years*12*reader.num_input_layers())
     with tf.GradientTape() as tape:
         logits = model(batch_data, training=True)
         loss_value = loss(target_data, logits)
@@ -87,14 +88,14 @@ for i, l in enumerate(reader.layers):
     print('')
 
 # try to predict the following year
-print('** using the model to predict the following year **')
-reader.scan_input_data(data_root = args.data,
-                       land_xy_file = args.land,
-                       years_only = [1989, 1990],
-                       subregion=[[0, 4], [46, 50]])
-batch_data, target_data = reader.next_batch()
-batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
-predictions = np.round(model.predict(batch_data), 2)
+#print('** using the model to predict the following year **')
+#reader.scan_input_data(data_root = args.data,
+#                       land_xy_file = args.land,
+#                       years_only = [1989, 1990],
+#                       subregion=[[0, 4], [46, 50]])
+#batch_data, target_data = reader.next_batch()
+#batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
+#predictions = np.round(model.predict(batch_data), 2)
 
 for i, l in enumerate(reader.layers):
     print(f'predictions for {l}:')
