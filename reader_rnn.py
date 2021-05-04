@@ -210,13 +210,17 @@ class DataReader:
             totaldat = np.concatenate(np.stack(tostack), axis = None)
             in_layer = []
             tgt_layer = []
-            for index in range(len(totaldat) - step-1):
+            for index in range(len(totaldat) - step):
                 in_layer.append(totaldat[index:index+step])
                 tgt_layer.append(totaldat[index+step])
             in_dat.append(np.stack(in_layer))
             tgt_dat.append(np.stack(tgt_layer))
-
-
+        in_dat = np.squeeze(in_dat)
+        tgt_dat = np.squeeze(tgt_dat)
+        
+        #reshape for keras
+        in_dat = np.reshape(in_dat, (in_dat.shape[0], 1, in_dat.shape[1]))
+        tgt_dat = np.reshape(tgt_dat, (tgt_dat.shape[0], 1,len(self.layers)))
         return in_dat, tgt_dat
 
     def next_batch(self, ny):

@@ -24,11 +24,13 @@ def basic_cnn(num_input_layers, num_output_layers, window_diam, nyears):
     print(model.summary())
     return model
 
-def basic_rnn(hidden_layer, steps):
+def basic_rnn(hidden_layer, steps, lr):
     model = models.Sequential()
-    model.add(layers.simpleRNN(units = hidden_layer, input_shape = (1,step), activation = 'relu'))
+    model.add(layers.SimpleRNN(units = hidden_layer, input_shape = (1,steps), activation = 'relu'))
     model.add(layers.Dense(12))
     model.add(layers.Dense(1))
+    optimizer = optimizers.Adam(lr = lr)
+    model.compile(loss='mean_squared_error', optimizer=optimizer)
     print(model.summary())
     return model
 parser = argparse.ArgumentParser()
@@ -65,13 +67,8 @@ reader.configure_batch(batch_size = args.batch,
 
 #find data
 batch_data, target_data = reader.rnn_data(args.step)
-print(batch_data)
-print(type(batch_data))
-print(np.array(batch_data).shape)
-print('target')
-print(target_data)
-print(type(target_data))
-print(np.array(target_data).shape)
+model = basic_rnn(100, args.step, args.lr)
+model.fit(batch_data,target_data, epochs=100, batch_size=16, verbose=1)
 '''
 # create model
 window_diam = 2 * args.window + 1
