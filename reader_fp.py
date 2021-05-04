@@ -65,7 +65,7 @@ class DataReader:
         '''
         self.layer_data = {}
         self.valid_years = []
-        combined_size = 0
+        self.combined_size = 0
         for y in years:
             layers = {}
             for l in self.layers:
@@ -134,12 +134,12 @@ class DataReader:
         elif point is not None:
             lat_idx, lon_idx = self.get_single_point_indices(point)
             self.apply_idx_restriction_to_xy_coords(lat_idx, lat_idx, lon_idx, lon_idx)
-        self.land_xys = list(zip(*self.is_land.nonzero()))
-        print(f'{len(self.land_xys)} points found on land')
+        self.land_xy = list(zip(*self.is_land.nonzero()))
+        print(f'{len(self.land_xy)} points found on land')
 
     def save_land(self, land_xy_file):
         try:
-            np.save(land_xy_file, self.land_xys)
+            np.save(land_xy_file, self.land_xy)
             if self.verbose:
                 print('saved land xy data to "{}"'.format(land_xy_file))
         except Exception as e:
@@ -147,13 +147,13 @@ class DataReader:
 
     def load_land_file(self, land_xy_file, lat_points, lon_points):
         try:
-            self.land_xys = np.load(land_xy_file)
+            self.land_xy = np.load(land_xy_file)
             if self.verbose:
-                print('{} points loaded from file'.format(len(self.land_xys)))
+                print('{} points loaded from file'.format(len(self.land_xy)))
             self.is_land = np.full((lat_points, lon_points), False)
-            self.is_land[self.land_xys[:, 0], self.land_xys[:, 1]] = True
-            self.land_xys = self.land_xys.T
-            self.land_xys = list(zip(self.land_xys[0], self.land_xys[1]))
+            self.is_land[self.land_xy[:, 0], self.land_xy[:, 1]] = True
+            self.land_xy = self.land_xy.T
+            self.land_xy = list(zip(self.land_xy[0], self.land_xy[1]))
         except FileNotFoundError:
             pass
 
@@ -163,9 +163,9 @@ class DataReader:
         years = self.scan_input_dir(data_root, year_min, year_max, years_only)
         self.validate_years(data_root, years, lat_points, lon_points)
         # read or generate list of land xy locations
-        self.land_xys = None
+        self.land_xy = None
         if land_xy_file: self.load_land_file(land_xy_file, lat_points, lon_points)
-        if self.land_xys is None: #the previous line would have updated self.land_xys if a file existed
+        if self.land_xy is None: #the previous line would have updated self.land_xy if a file existed
             self.compute_land_file(lat_points, subregion, point)
             if land_xy_file: self.save_land(land_xy_file)
 
@@ -174,42 +174,40 @@ class DataReader:
         self.window_size = window_size
         self.window_diam = 2 * window_size + 1
         self.area_size = area_size
+        self.combined_size = self.area_size + self.window_size
         self.num_years = num_years
         self.dtype = dtype
 
     def next_batch(self):
-        # samples in a given batch will always use the same reference year
-        # don't allow the last year as we need it for loss
-        start_y = random.choice(self.valid_years[:-self.num_years])
-        # TODO: add logic to correctly calculate reference year for a RNN
-        tgt_y = start_y + self.num_years
-
         in_data = []
         tgt_data = []
-        combined_size = self.area_size + self.window_size
         for b in range(self.batch_size):
-            # pick an xy that doesn't fall off the edge (TODO: handle wrapping)
+            # samples in a given batch use a random (valid) start year
+            # don't allow the last year as we need it for loss
+            start_y = random.choice(self.valid_years[:-self.num_years])
+            # TODO: add logic to correctly calculate reference year for a RNN
+            tgt_y = start_y + self.num_years
+            # use the given xy coordinate and area size and window size (TODO: handle wrapping)
             # check if any of the window is in the ocean (coastlines are not straight)
-            #
             # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
-            lat, lon = random.choice(self.land_xys)
+            lat, lon = self.land_xy
             layer_data = self.layer_data[start_y][self.layers[0]]
-            window_data = layer_data[:, (lat - self.window_size) : (lat + combined_size),
-                                        (lon - self.window_size) : (lon + combined_size)]
+            window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
+                                        (lon - self.window_size) : (lon + self.combined_size)]
             for ref_y in range(start_y, tgt_y):
                 tostack = []
                 for l in self.layers:
                     layer_data = self.layer_data[ref_y][l]
-                    window_data = layer_data[:, (lat - self.window_size) : (lat + combined_size),
-                                                (lon - self.window_size) : (lon + combined_size)]
+                    window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
+                                                (lon - self.window_size) : (lon + self.combined_size)]
                     window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
                     tostack.append(window_data)
                 # now add on extra layers, if any
                 for el in self.extra_layers:
                     if el == 'land':
-                        window_data = self.is_land[(lat - self.window_size) : (lat + combined_size),
-                                                   (lon - self.window_size) : (lon + combined_size)]
+                        window_data = self.is_land[(lat - self.window_size) : (lat + self.combined_size),
+                                                   (lon - self.window_size) : (lon + self.combined_size)]
                         tostack.append(window_data.astype(self.dtype))
 
                 in_data.append(np.stack(tostack))
