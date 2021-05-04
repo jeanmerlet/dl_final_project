@@ -115,9 +115,9 @@ class DataReader:
 
     def apply_idx_restriction_to_xy_coords(self, lat_min_idx, lat_max_idx, lon_min_idx, lon_max_idx):
         # sets any values outside the lat and lon indices in the is_land coordinate set to False
-        self.is_land[:lat_min_idx-2, :] = False
+        self.is_land[:lat_min_idx-1, :] = False
         self.is_land[lat_max_idx:, :] = False
-        self.is_land[:, :lon_min_idx-2] = False
+        self.is_land[:, :lon_min_idx-1] = False
         self.is_land[:, lon_max_idx:] = False
 
     def compute_land_file(self, lat_points, subregion, point):
