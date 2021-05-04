@@ -67,6 +67,7 @@ class DataReader:
         self.layer_data = {}
         self.valid_years = []
         self.combined_size = 0
+        total_size = 0
         for y in years:
             layers = {}
             for l in self.layers:
@@ -182,12 +183,12 @@ class DataReader:
         self.num_years = num_years
         self.dtype = dtype
 
-    def next_batch(self):
+    def next_batch(self, ny):
         # samples in a given batch will always use the same reference year
         # don't allow the last year as we need it for loss
-        ref_y = random.choice(self.valid_years[:-1])
+        start_y = random.choice(self.valid_years[:-ny])
         # TODO: add logic to correctly calculate reference year for a RNN
-        tgt_y = ref_y + 1
+        tgt_y = start_y + ny
 
         in_data = []
         tgt_data = []
@@ -202,7 +203,11 @@ class DataReader:
             # check if any of the window is in the ocean (coastlines are not straight)
             # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
-            lat, lon = self.land_xy
+            #lat, lon = self.land_xy
+            print('land_xy ', self.land_xy)
+            lat = self.land_xy[0][0]
+            lon = self.land_xy[0][1]
+            print(lat, lon)
             layer_data = self.layer_data[start_y][self.layers[0]]
             window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
                                         (lon - self.window_size) : (lon + self.combined_size)]
