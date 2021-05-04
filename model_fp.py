@@ -14,7 +14,7 @@ import argparse
 import time
 import os
 
-def basic_cnn(num_input_layers, num_output_layers, window_diam, area_size, nyears):
+def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, area_size, nyears):
     input_shape = (area_size + window_diam - 1, area_size + window_diam - 1, nyears * 12 * num_input_layers)
     model = models.Sequential()
     model.add(layers.Conv2D(filters=32, kernel_size=3, activation='relu', input_shape=input_shape))
@@ -39,10 +39,10 @@ parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
 parser.add_argument('-g', '--area', type=int, default=2,
                     help='area size')
-parser.add_argument('-y', '--years', type=int, default=1,
-                    help='year window size')
-parser.add_argument('-n', '--num-iterations', type=int, default=200,
-                    help='number of batches to use for training')
+parser.add_argument('-y', '--years', type=int, default=10,
+                    help='number of inputs years')
+parser.add_argument('-n', '--num-iterations', type=int, default=50,
+                    help='number of iterations to run')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
 parser.add_argument('-v', '--verbose', action='store_true',
@@ -54,7 +54,9 @@ reader = DataReader(verbose = args.verbose)
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       years_only = [1988, 1989],
+                       #years_only = [1988, 1989],
+                       year_min=1980,
+                       year_max=1990,
                        #subregion = [[43, 49], [-2, 7]])
                        point = (48.86, 2.34))
 
@@ -62,15 +64,16 @@ reader.scan_input_data(data_root = args.data,
 reader.configure_batch(batch_size = args.batch,
                        window_size = args.window,
                        area_size = args.area,
+                       num_years = args.years,
                        dtype = np.float32)
 
 # create model
 window_diam = 2 * args.window + 1
-model = basic_cnn(reader.num_input_layers(),
-                  reader.num_output_layers(),
-                  window_diam,
-                  args.area,
-                  args.years)
+model = n_years_to_one_year_cnn(reader.num_input_layers(),
+                                reader.num_output_layers(),
+                                window_diam,
+                                args.area,
+                                args.years)
 loss = tf.keras.losses.MeanSquaredError()
 opt = tf.keras.optimizers.SGD(lr=args.lr)
 model.compile(loss=loss, optimizer=opt)

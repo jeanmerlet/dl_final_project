@@ -15,7 +15,7 @@ class DataReader:
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-        #self.layers = ['prcptn', 'def']
+        self.layers = ['prcptn', 'def']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -169,19 +169,20 @@ class DataReader:
             self.compute_land_file(lat_points, subregion, point)
             if land_xy_file: self.save_land(land_xy_file)
 
-    def configure_batch(self, batch_size, window_size, area_size, dtype):
+    def configure_batch(self, batch_size, window_size, area_size, num_years, dtype):
         self.batch_size = batch_size
         self.window_size = window_size
         self.window_diam = 2 * window_size + 1
         self.area_size = area_size
+        self.num_years = num_years
         self.dtype = dtype
 
     def next_batch(self):
         # samples in a given batch will always use the same reference year
         # don't allow the last year as we need it for loss
-        ref_y = random.choice(self.valid_years[:-1])
+        start_y = random.choice(self.valid_years[:-self.num_years])
         # TODO: add logic to correctly calculate reference year for a RNN
-        tgt_y = ref_y + 1
+        tgt_y = start_y + self.num_years
 
         in_data = []
         tgt_data = []
@@ -190,27 +191,28 @@ class DataReader:
             # pick an xy that doesn't fall off the edge (TODO: handle wrapping)
             # check if any of the window is in the ocean (coastlines are not straight)
             #
-            # this assumes that valid values for the first layer are valid for all
+            # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
             lat, lon = random.choice(self.land_xys)
-            layer_data = self.layer_data[ref_y][self.layers[0]]
+            layer_data = self.layer_data[start_y][self.layers[0]]
             window_data = layer_data[:, (lat - self.window_size) : (lat + combined_size),
                                         (lon - self.window_size) : (lon + combined_size)]
-            tostack = []
-            for l in self.layers:
-                layer_data = self.layer_data[ref_y][l]
-                window_data = layer_data[:, (lat - self.window_size) : (lat + combined_size),
-                                            (lon - self.window_size) : (lon + combined_size)]
-                window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
-                tostack.append(window_data)
-            # now add on extra layers, if any
-            for el in self.extra_layers:
-                if el == 'land':
-                    window_data = self.is_land[(lat - self.window_size) : (lat + combined_size),
-                                               (lon - self.window_size) : (lon + combined_size)]
-                    tostack.append(window_data.astype(self.dtype))
+            for ref_y in range(start_y, tgt_y):
+                tostack = []
+                for l in self.layers:
+                    layer_data = self.layer_data[ref_y][l]
+                    window_data = layer_data[:, (lat - self.window_size) : (lat + combined_size),
+                                                (lon - self.window_size) : (lon + combined_size)]
+                    window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
+                    tostack.append(window_data)
+                # now add on extra layers, if any
+                for el in self.extra_layers:
+                    if el == 'land':
+                        window_data = self.is_land[(lat - self.window_size) : (lat + combined_size),
+                                                   (lon - self.window_size) : (lon + combined_size)]
+                        tostack.append(window_data.astype(self.dtype))
 
-            in_data.append(np.stack(tostack))
+                in_data.append(np.stack(tostack))
 
             # we also need area-sized-location climate data for the target year
             tostack = []
@@ -227,7 +229,7 @@ class DataReader:
         # stack/numpy-ify everything
         in_data = np.stack(in_data, axis=-1)
         total_size = self.window_diam + self.area_size - 1
-        in_data = in_data.reshape(self.batch_size, total_size, total_size, self.num_input_layers() * 12)
+        in_data = in_data.reshape(self.batch_size, total_size, total_size, self.num_input_layers() * 12 * self.num_years)
         tgt_data = np.stack(tgt_data, axis=-1)
         #print(tgt_data.shape)
         tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, self.num_input_layers(), 12)
