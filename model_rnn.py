@@ -8,7 +8,7 @@ sys.dont_write_bytecode = True
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import models, layers, optimizers
-from reader_rnn import DataReader
+from reader_rnn import RNNDataReader
 import argparse
 import time
 
@@ -52,8 +52,8 @@ parser.add_argument('-y', '--years', type=int, default=1, help = 'number of year
 parser.add_argument('-s', '--step', type = int, default = 2, help = 'step size for RNN')
 args = parser.parse_args()
 
-# instantiate DataReader
-reader = DataReader(verbose = args.verbose)
+# instantiate RNNDataReader
+reader = RNNDataReader(verbose = args.verbose)
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
