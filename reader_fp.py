@@ -197,7 +197,7 @@ class DataReader:
             # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
             while np.isnan(window_data).any():
-                lat, lon = random.choice(self.land_xys)
+                lat, lon = random.choice(self.land_xy)
                 layer_data = self.layer_data[start_y][self.layers[0]]
                 window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
                                             (lon - self.window_size) : (lon + self.window_size + 1)]
