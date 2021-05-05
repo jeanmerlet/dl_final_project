@@ -182,13 +182,7 @@ class DataReader:
         self.num_years = num_years
         self.dtype = dtype
 
-    def next_batch(self, ny):
-        # samples in a given batch will always use the same reference year
-        # don't allow the last year as we need it for loss
-        start_y = random.choice(self.valid_years[:-ny])
-        # TODO: add logic to correctly calculate reference year for a RNN
-        tgt_y = start_y + ny
-
+    def next_batch(self):
         in_data = []
         tgt_data = []
 

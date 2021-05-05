@@ -11,7 +11,7 @@ from tensorflow.keras import models, layers, optimizers
 from reader_fp import DataReader
 import argparse
 import time
-
+import os
 
 def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, area_size, nyears):
     input_shape = (area_size + window_diam - 1, area_size + window_diam - 1, nyears * 12 * num_input_layers)
@@ -99,8 +99,7 @@ model.compile(loss=loss, optimizer=opt)
 # train
 start = time.time()
 for n in range(args.num_iterations):
-    batch_data, target_data = reader.next_batch(args.years)
-    batch_data = batch_data.reshape(1, window_diam, window_diam, args.years*12*reader.num_input_layers())
+    batch_data, target_data = reader.next_batch()
     with tf.GradientTape() as tape:
         logits = model(batch_data, training=True)
         loss_value = loss(target_data, logits)
