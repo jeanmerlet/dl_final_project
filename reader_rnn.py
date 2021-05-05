@@ -279,3 +279,25 @@ class DataReader:
         tgt_data = np.array(tgt_data, dtype=self.dtype)
 
         return in_data, tgt_data
+    def climate_data(self):
+        '''
+        Creates climate data for each point we are interested in
+        returns XxLx12 matrix where X is the number of points in land_xy and L is   the number of layers
+        '''
+        climate_data = []
+        for lat, lon in self.land_xy:
+            pointclim = []
+    
+            for l in self.layers:
+                tostack = []
+                for y in self.valid_years[:-1]:
+                    year_dat = self.layer_data[y][l]
+                    year_dat = year_dat[:, lat, lon]
+                    tostack.append(year_dat)
+                clim = np.stack(tostack)
+                clim = np.mean(clim, axis = 0)
+                pointclim.append(clim)
+            pointclim=np.stack(pointclim)
+            climate_data.append(pointclim)
+
+        return np.array(climate_data)
