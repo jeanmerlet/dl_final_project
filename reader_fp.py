@@ -65,7 +65,6 @@ class DataReader:
         '''
         self.layer_data = {}
         self.valid_years = []
-        self.combined_size = 0
         for y in years:
             layers = {}
             for l in self.layers:
@@ -175,6 +174,7 @@ class DataReader:
         self.window_diam = 2 * window_size + 1
         self.area_size = area_size
         self.combined_size = self.area_size + self.window_size
+        self.total_size = self.window_diam + self.area_size - 1
         self.num_years = num_years
         self.dtype = dtype
 
@@ -191,7 +191,7 @@ class DataReader:
             # check if any of the window is in the ocean (coastlines are not straight)
             # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
-            lat, lon = self.land_xy
+            lat, lon = self.land_xy[0]
             layer_data = self.layer_data[start_y][self.layers[0]]
             window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
                                         (lon - self.window_size) : (lon + self.combined_size)]
@@ -222,15 +222,16 @@ class DataReader:
                 tostack.append(window_data)
 
             tgt_data.append(np.stack(tostack))
-            #tgt_data.append([self.layer_data[tgt_y][l][:, lat, lon] for l in self.layers])
 
         # stack/numpy-ify everything
         in_data = np.stack(in_data, axis=-1)
-        total_size = self.window_diam + self.area_size - 1
-        in_data = in_data.reshape(self.batch_size, total_size, total_size, self.num_input_layers() * 12 * self.num_years)
+        print(in_data.shape)
+        in_data = in_data.reshape(self.batch_size, self.total_size, self.total_size,
+                                  self.num_input_layers() * 12 * self.num_years)
+        print(in_data.shape)
         tgt_data = np.stack(tgt_data, axis=-1)
         #print(tgt_data.shape)
-        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, self.num_input_layers(), 12)
-        #tgt_data = np.array(tgt_data, dtype=self.dtype)
+        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, 12, self.num_input_layers())
+        #print(tgt_data.shape)
 
         return in_data, tgt_data

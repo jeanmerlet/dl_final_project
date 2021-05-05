@@ -23,7 +23,7 @@ def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, ar
     model.add(layers.Dense(64, activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Dense(area_size**2 * 12 * num_output_layers))
-    model.add(layers.Reshape((area_size**2, num_output_layers, 12)))
+    model.add(layers.Reshape((area_size**2, 12, num_output_layers)))
     print(model.summary())
     return model
 
@@ -33,7 +33,7 @@ parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Pro
 #parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/france_43_to_49_-2_to_7.npy',
 parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/paris.npy',
                     help='path to list of land coordinates')
-parser.add_argument('-b', '--batch', type=int, default=1,
+parser.add_argument('-b', '--batch', type=int, default=2,
                     help='training batch size')
 parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
@@ -66,6 +66,9 @@ reader.configure_batch(batch_size = args.batch,
                        area_size = args.area,
                        num_years = args.years,
                        dtype = np.float32)
+# multiple GPUs
+mirrored_strategy = tf.distribute.MirroredStrategy()
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 # create model
 window_diam = 2 * args.window + 1
@@ -102,13 +105,11 @@ for i in range(args.area**2):
         print('')
 
 # try to predict the following year
-print('** using the model to predict the following year **')
+print('** using the model to predict a different year **')
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       #years_only = [1988, 1989],
                        year_min=1990,
                        year_max=2000,
-                       #subregion = [[43, 49], [-2, 7]])
                        point = (48.86, 2.34))
 
 batch_data, target_data = reader.next_batch()
