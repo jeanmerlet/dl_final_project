@@ -7,7 +7,6 @@ import csv
 import re
 import random
 import warnings
-import sys
 
 class DataReader:
     def __init__(self, verbose=False):
@@ -16,7 +15,7 @@ class DataReader:
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-        #self.layers = ['prcptn']
+        self.layers = ['prcptn', 'def']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -85,7 +84,6 @@ class DataReader:
                     if s != (12, lat_points, lon_points):
                         raise ValueError(f'wrong data shape: {s}')
                     layers[l] = data
-                    total_size += sys.getsizeof(data)
                 except Exception as e:
                     print(f'FAILED to read "{layer_file}": {e}')
                     print(f'{y} skipped')
@@ -180,6 +178,7 @@ class DataReader:
         self.window_diam = 2 * window_size + 1
         self.area_size = area_size
         self.combined_size = self.area_size + self.window_size
+        self.total_size = self.window_diam + self.area_size - 1
         self.num_years = num_years
         self.dtype = dtype
 
@@ -203,11 +202,7 @@ class DataReader:
             # check if any of the window is in the ocean (coastlines are not straight)
             # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
-            #lat, lon = self.land_xy
-            print('land_xy ', self.land_xy)
-            lat = self.land_xy[0][0]
-            lon = self.land_xy[0][1]
-            print(lat, lon)
+            lat, lon = self.land_xy[0]
             layer_data = self.layer_data[start_y][self.layers[0]]
             window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
                                         (lon - self.window_size) : (lon + self.combined_size)]
@@ -242,11 +237,13 @@ class DataReader:
 
         # stack/numpy-ify everything
         in_data = np.stack(in_data, axis=-1)
-        total_size = self.window_diam + self.area_size - 1
-        in_data = in_data.reshape(self.batch_size, total_size, total_size, self.num_input_layers() * 12 * self.num_years)
+        print(in_data.shape)
+        in_data = in_data.reshape(self.batch_size, self.total_size, self.total_size,
+                                  self.num_input_layers() * 12 * self.num_years)
+        print(in_data.shape)
         tgt_data = np.stack(tgt_data, axis=-1)
         #print(tgt_data.shape)
-        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, self.num_input_layers(), 12)
-        #tgt_data = np.array(tgt_data, dtype=self.dtype)
+        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, 12, self.num_input_layers())
+        #print(tgt_data.shape)
 
         return in_data, tgt_data
