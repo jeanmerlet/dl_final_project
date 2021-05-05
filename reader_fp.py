@@ -9,7 +9,7 @@ import re
 import random
 import warnings
 
-class DataReader(keras.utils.Sequence):
+class CNNDataReader(keras.utils.Sequence):
     def __init__(self, verbose=False):
         self.verbose = verbose
         # these are layers we'll read from the netcdf files
