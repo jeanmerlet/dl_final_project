@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # before we do much of anything, disable writing bytecode, as that suffers
-#  from race conditions with distributed jobs on shared file systems
+# from race conditions with distributed jobs on shared file systems
 import sys
 sys.dont_write_bytecode = True
 
@@ -30,34 +30,34 @@ def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, ar
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Projects/NV_ORNL_XAIClimate/data/climate_layers/primary/TerraClim',
                     help='path to dataset')
-#parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/france_43_to_49_-2_to_7.npy',
 parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/paris.npy',
                     help='path to list of land coordinates')
-parser.add_argument('-b', '--batch', type=int, default=2,
+parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
 parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
-parser.add_argument('-g', '--area', type=int, default=3,
+parser.add_argument('-a', '--area', type=int, default=3,
                     help='area size')
-parser.add_argument('-y', '--years', type=int, default=10,
+parser.add_argument('-y', '--years', type=int, default=5,
                     help='number of inputs years')
-parser.add_argument('-n', '--num-iterations', type=int, default=100,
+parser.add_argument('-n', '--num-iterations', type=int, default=10,
                     help='number of iterations to run')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
 parser.add_argument('-v', '--verbose', action='store_true',
                     help='generate verbose output')
+parser.add_argument('-p', '--distributed', action='store_true',
+                    help='enable distributed learning')
 args = parser.parse_args()
 
 # instantiate DataReader
 reader = DataReader(verbose = args.verbose)
+
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       #years_only = [1988, 1989],
                        year_min=1960,
                        year_max=1980,
-                       #subregion = [[43, 49], [-2, 7]])
                        point = (48.86, 2.34))
 
 # configure batches
@@ -66,35 +66,32 @@ reader.configure_batch(batch_size = args.batch,
                        area_size = args.area,
                        num_years = args.years,
                        dtype = np.float32)
-# multiple GPUs
+
+# distribution for multiple GPUs on one node
 mirrored_strategy = tf.distribute.MirroredStrategy()
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+num_gpus = mirrored_strategy.num_replicas_in_sync
+lr = args.lr * num_gpus
+print("Num GPUs Available: ", num_gpus)
 
 # create model
-window_diam = 2 * args.window + 1
-model = n_years_to_one_year_cnn(reader.num_input_layers(),
-                                reader.num_output_layers(),
-                                window_diam,
-                                args.area,
-                                args.years)
-loss = tf.keras.losses.MeanSquaredError()
-opt = tf.keras.optimizers.SGD(lr=args.lr)
+with mirrored_strategy.scope():
+    model = n_years_to_one_year_cnn(reader.num_input_layers(),
+                                    reader.num_output_layers(),
+                                    reader.window_diam,
+                                    args.area,
+                                    args.years)
+    opt = keras.optimizers.SGD(lr=args.lr)
+    loss = keras.losses.MeanSquaredError()
+
 model.compile(loss=loss, optimizer=opt)
 
 # train
 start = time.time()
-for n in range(args.num_iterations):
-    batch_data, target_data = reader.next_batch()
-    with tf.GradientTape() as tape:
-        logits = model(batch_data, training=True)
-        loss_value = loss(target_data, logits)
-    grads = tape.gradient(loss_value, model.trainable_weights)
-    opt.apply_gradients(zip(grads, model.trainable_weights))
-    print(f'iteration {n}/{args.num_iterations}, loss={loss_value}')
-
+model.fit(x=reader, epochs=args.num_iterations)
 print(f'total train time: {round(time.time() - start, 2)}')
 
 np.set_printoptions(suppress=True)
+batch_data, target_data, _ = reader.__getitem__()
 predictions = np.round(model.predict(batch_data), 2)
 for i in range(args.area**2):
     for j, l in enumerate(reader.layers):
@@ -112,7 +109,7 @@ reader.scan_input_data(data_root = args.data,
                        year_max=2000,
                        point = (48.86, 2.34))
 
-batch_data, target_data = reader.next_batch()
+batch_data, target_data, _ = reader.__getitem__()
 predictions = np.round(model.predict(batch_data), 2)
 for i in range(args.area**2):
     for j, l in enumerate(reader.layers):
