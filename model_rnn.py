@@ -24,11 +24,11 @@ def basic_cnn(num_input_layers, num_output_layers, window_diam, nyears):
     print(model.summary())
     return model
 
-def basic_rnn(hidden_layer, steps, lr):
+def basic_rnn(hidden_layer, steps, input_vals, lr, num_layers):
     model = models.Sequential()
-    model.add(layers.SimpleRNN(units = hidden_layer, input_shape = (1,steps), activation = 'relu'))
+    model.add(layers.SimpleRNN(units = hidden_layer, input_shape = (steps,input_vals), activation = 'relu'))
     model.add(layers.Dense(12))
-    model.add(layers.Dense(1))
+    model.add(layers.Dense(num_layers))
     optimizer = optimizers.Adam(lr = lr)
     model.compile(loss='mean_squared_error', optimizer=optimizer)
     print(model.summary())
@@ -67,8 +67,13 @@ reader.configure_batch(batch_size = args.batch,
 
 #find data
 batch_data, target_data = reader.rnn_data(args.step)
-model = basic_rnn(100, args.step, args.lr)
+print(np.array(batch_data).shape)
+print(np.array(target_data).shape)
+input_vals = batch_data.shape[2]
+model = basic_rnn(100, args.step, input_vals, args.lr, reader.num_input_layers())
 model.fit(batch_data,target_data, epochs=100, batch_size=16, verbose=1)
+print(model.predict(batch_data[10:11,:, :]))
+print(target_data[10:11,:])
 '''
 # create model
 window_diam = 2 * args.window + 1

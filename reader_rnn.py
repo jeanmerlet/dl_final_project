@@ -16,7 +16,7 @@ class DataReader:
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-        self.layers = ['prcptn']
+        self.layers = ['prcptn', 'vap']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -200,27 +200,37 @@ class DataReader:
         layer_data = self.layer_data[start_y][self.layers[0]]
         window_data = layer_data[:, lat, lon]
         
+        
         for l in self.layers:
             tostack = []
+            totgt = []
             for ref_y in range(start_y, end_y+1):
                 layer_data = self.layer_data[ref_y][l]
-                window_data = layer_data[:, lat, lon]
+                window_data = layer_data[:, (lat-self.window_size):(lat+self.window_size+1), (lon-self.window_size):(lon+self.window_size+1)]
                 tostack.append(window_data.astype(self.dtype))
-            
-            totaldat = np.concatenate(np.stack(tostack), axis = None)
+                tgt = layer_data[:, lat, lon]
+                totgt.append(tgt.astype(self.dtype))
+            totaldat = np.concatenate(np.stack(tostack))
+            print(totaldat.shape)
+            tgt = np.concatenate(np.stack(totgt), axis = None)
             in_layer = []
             tgt_layer = []
-            for index in range(len(totaldat) - step):
-                in_layer.append(totaldat[index:index+step])
-                tgt_layer.append(totaldat[index+step])
+            for index in range((len(self.valid_years)*12) - step):
+                in_layer.append(totaldat[index:index+step, :, :])
+                tgt_layer.append(tgt[index+step])
             in_dat.append(np.stack(in_layer))
             tgt_dat.append(np.stack(tgt_layer))
         in_dat = np.squeeze(in_dat)
+        print(in_dat.shape)
         tgt_dat = np.squeeze(tgt_dat)
-        
+        if len(self.layers) > 1:
+            in_dat = np.moveaxis(in_dat, 0, -1)
+            tgt_dat = np.moveaxis(tgt_dat, 0, -1)
+        print(in_dat.shape)
+        print(tgt_dat.shape)
         #reshape for keras
-        in_dat = np.reshape(in_dat, (in_dat.shape[0], 1, in_dat.shape[1]))
-        tgt_dat = np.reshape(tgt_dat, (tgt_dat.shape[0], 1,len(self.layers)))
+        in_dat = np.reshape(in_dat, (in_dat.shape[0], in_dat.shape[1], len(self.layers)*(in_dat.shape[2]**2)))
+        tgt_dat = np.reshape(tgt_dat, (tgt_dat.shape[0], len(self.layers)))
         return in_dat, tgt_dat
 
     def next_batch(self, ny):
