@@ -196,6 +196,12 @@ class DataReader:
             # check if any of the window is in the ocean (coastlines are not straight)
             # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
+            while np.isnan(window_data).any():
+                lat, lon = random.choice(self.land_xys)
+                layer_data = self.layer_data[start_y][self.layers[0]]
+                window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
+                                            (lon - self.window_size) : (lon + self.window_size + 1)]
+
             lat, lon = self.land_xy[0]
             layer_data = self.layer_data[start_y][self.layers[0]]
             window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
@@ -204,6 +210,14 @@ class DataReader:
                 tostack = []
                 for l in self.layers:
                     layer_data = self.layer_data[ref_y][l]
+                    window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
+                                            (lon - self.window_size) : (lon + self.window_size + 1)]
+                    tostack.append(window_data.astype(self.dtype))
+                # now add on extra layers, if any
+                for el in self.extra_layers:
+                    if el == 'land':
+                        window_data = self.is_land[(lat - self.window_size) : (lat + self.window_size + 1),
+                                               (lon - self.window_size) : (lon + self.window_size + 1)]
                     window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
                                                 (lon - self.window_size) : (lon + self.combined_size)]
                     window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
@@ -217,6 +231,8 @@ class DataReader:
 
                 in_data.append(np.stack(tostack))
 
+            # we also need single-location climate data for the target year
+            tgt_data.append([ self.layer_data[tgt_y][l][:, lat, lon] for l in self.layers ])
             # we also need area-sized-location climate data for the target year
             tostack = []
             for l in self.layers:
@@ -231,13 +247,34 @@ class DataReader:
 
         # stack/numpy-ify everything
         in_data = np.stack(in_data, axis=-1)
-        print(in_data.shape)
-        in_data = in_data.reshape(self.batch_size, self.total_size, self.total_size,
-                                  self.num_input_layers() * 12 * self.num_years)
-        print(in_data.shape)
+        total_size = self.window_diam + self.area_size - 1
+        in_data = in_data.reshape(self.batch_size, total_size, total_size, self.num_input_layers() * 12 * self.num_years)
         tgt_data = np.stack(tgt_data, axis=-1)
         #print(tgt_data.shape)
-        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, 12, self.num_input_layers())
-        #print(tgt_data.shape)
+        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, self.num_input_layers(), 12)
+        #tgt_data = np.array(tgt_data, dtype=self.dtype)
 
         return in_data, tgt_data
+
+    def climate_data(self):
+        '''
+        Creates climate data for each point we are interested in
+        returns XxLX12 matrix where X is the number of points in land_xy and L is   the number of layers
+        '''
+        climate_data = []
+        for lat, lon in self.land_xy:
+            pointclim = []
+
+            for l in self.layers:
+                tostack = []
+                for y in self.valid_years[:-1]:
+                    year_dat = self.layer_data[y][l]
+                    year_dat = year_dat[:, lat, lon]
+                    tostack.append(year_dat)
+                clim = np.stack(tostack)
+                clim = np.mean(clim, axis = 0)
+                pointclim.append(clim)
+            pointclim=np.stack(pointclim)
+            climate_data.append(pointclim)
+
+        return np.array(climate_data)
