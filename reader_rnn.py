@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-from tensorflow import keras
 import numpy as np
 import xarray as xr
 import csv
@@ -10,18 +9,14 @@ import random
 import warnings
 import sys
 
-class DataReader(keras.utils.Sequence):
+class DataReader:
     def __init__(self, verbose=False):
         self.verbose = verbose
         # these are layers we'll read from the netcdf files
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-<<<<<<< HEAD
-        #self.layers = ['prcptn', 'def']
-=======
-        #self.layers = ['prcptn']
->>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
+        self.layers = ['prcptn', 'vap']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -71,11 +66,7 @@ class DataReader(keras.utils.Sequence):
         '''
         self.layer_data = {}
         self.valid_years = []
-<<<<<<< HEAD
-=======
-        self.combined_size = 0
         total_size = 0
->>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
         for y in years:
             layers = {}
             for l in self.layers:
@@ -147,12 +138,13 @@ class DataReader(keras.utils.Sequence):
         elif point is not None:
             lat_idx, lon_idx = self.get_single_point_indices(point)
             self.apply_idx_restriction_to_xy_coords(lat_idx, lat_idx, lon_idx, lon_idx)
-        self.land_xy = list(zip(*self.is_land.nonzero()))
-        print(f'{len(self.land_xy)} points found on land')
+        self.land_xys = list(zip(*self.is_land.nonzero()))
+        #self.land_xys = list(zip(*([self.is_land.nonzero()[0][0]], [self.is_land.nonzero()[1][0]])))
+        print(f'{len(self.land_xys)} points found on land')
 
     def save_land(self, land_xy_file):
         try:
-            np.save(land_xy_file, self.land_xy)
+            np.save(land_xy_file, self.land_xys)
             if self.verbose:
                 print('saved land xy data to "{}"'.format(land_xy_file))
         except Exception as e:
@@ -160,13 +152,13 @@ class DataReader(keras.utils.Sequence):
 
     def load_land_file(self, land_xy_file, lat_points, lon_points):
         try:
-            self.land_xy = np.load(land_xy_file)
+            self.land_xys = np.load(land_xy_file)
             if self.verbose:
-                print('{} points loaded from file'.format(len(self.land_xy)))
+                print('{} points loaded from file'.format(len(self.land_xys)))
             self.is_land = np.full((lat_points, lon_points), False)
-            self.is_land[self.land_xy[:, 0], self.land_xy[:, 1]] = True
-            self.land_xy = self.land_xy.T
-            self.land_xy = list(zip(self.land_xy[0], self.land_xy[1]))
+            self.is_land[self.land_xys[:, 0], self.land_xys[:, 1]] = True
+            self.land_xys = self.land_xys.T
+            self.land_xys = list(zip(self.land_xys[0], self.land_xys[1]))
         except FileNotFoundError:
             pass
 
@@ -176,44 +168,71 @@ class DataReader(keras.utils.Sequence):
         years = self.scan_input_dir(data_root, year_min, year_max, years_only)
         self.validate_years(data_root, years, lat_points, lon_points)
         # read or generate list of land xy locations
-        self.land_xy = None
+        self.land_xys = None
         if land_xy_file: self.load_land_file(land_xy_file, lat_points, lon_points)
-        if self.land_xy is None: #the previous line would have updated self.land_xy if a file existed
+        if self.land_xys is None: #the previous line would have updated self.land_xys if a file existed
             self.compute_land_file(lat_points, subregion, point)
             if land_xy_file: self.save_land(land_xy_file)
+        #print(self.land_xys)
+        #print(type(self.land_xys))
 
-    def configure_batch(self, batch_size, window_size, area_size, num_years, dtype):
+    def configure_batch(self, batch_size, window_size, dtype):
         self.batch_size = batch_size
         self.window_size = window_size
-        self.window_diam = 2 * window_size + 1
-        self.area_size = area_size
-        self.combined_size = self.area_size + self.window_size
-        self.total_size = self.window_diam + self.area_size - 1
-        self.num_years = num_years
         self.dtype = dtype
 
-<<<<<<< HEAD
-    def __len__(self):
-        return self.batch_size
+    def rnn_data(self, step):
+        '''
+        takes in a step size, outputs the input data and the target data 
+        input: step size (int)
 
-    def __getitem__(self, index=None):
-        in_data = []
-        tgt_data = []
-        # samples in a given batch use a random (valid) start year
-        # don't allow the last year as we need it for loss
-        start_y = random.choice(self.valid_years[:-self.num_years])
-        # TODO: add logic to correctly calculate reference year for a RNN
-        tgt_y = start_y + self.num_years
-        # use the given xy coordinate and area size and window size (TODO: handle wrapping)
-        # check if any of the window is in the ocean (coastlines are not straight)
-        # this assumes that valid values for the first layer are valid for all layers and years
-        window_data = np.nan
-        lat, lon = self.land_xy[0]
+        output:
+        in_data(stepxNxn_layers array where N is the number of possible steps)
+        tgt_data(1xN array)
+        '''
+        start_y = self.valid_years[0] #first year
+        end_y = self.valid_years[-1] #last years
+        
+        in_dat = []
+        tgt_dat = []
+        # while np.isnan(window_data).any():
+        lat, lon = random.choice(self.land_xys)
         layer_data = self.layer_data[start_y][self.layers[0]]
-        window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
-                                    (lon - self.window_size) : (lon + self.combined_size)]
-        for ref_y in range(start_y, tgt_y):
-=======
+        window_data = layer_data[:, lat, lon]
+        
+        
+        for l in self.layers:
+            tostack = []
+            totgt = []
+            for ref_y in range(start_y, end_y+1):
+                layer_data = self.layer_data[ref_y][l]
+                window_data = layer_data[:, (lat-self.window_size):(lat+self.window_size+1), (lon-self.window_size):(lon+self.window_size+1)]
+                tostack.append(window_data.astype(self.dtype))
+                tgt = layer_data[:, lat, lon]
+                totgt.append(tgt.astype(self.dtype))
+            totaldat = np.concatenate(np.stack(tostack))
+            print(totaldat.shape)
+            tgt = np.concatenate(np.stack(totgt), axis = None)
+            in_layer = []
+            tgt_layer = []
+            for index in range((len(self.valid_years)*12) - step):
+                in_layer.append(totaldat[index:index+step, :, :])
+                tgt_layer.append(tgt[index+step])
+            in_dat.append(np.stack(in_layer))
+            tgt_dat.append(np.stack(tgt_layer))
+        in_dat = np.squeeze(in_dat)
+        print(in_dat.shape)
+        tgt_dat = np.squeeze(tgt_dat)
+        if len(self.layers) > 1:
+            in_dat = np.moveaxis(in_dat, 0, -1)
+            tgt_dat = np.moveaxis(tgt_dat, 0, -1)
+        print(in_dat.shape)
+        print(tgt_dat.shape)
+        #reshape for keras
+        in_dat = np.reshape(in_dat, (in_dat.shape[0], in_dat.shape[1], len(self.layers)*(in_dat.shape[2]**2)))
+        tgt_dat = np.reshape(tgt_dat, (tgt_dat.shape[0], len(self.layers)))
+        return in_dat, tgt_dat
+
     def next_batch(self, ny):
         # samples in a given batch will always use the same reference year
         # don't allow the last year as we need it for loss
@@ -225,86 +244,45 @@ class DataReader(keras.utils.Sequence):
         tgt_data = []
 
         for b in range(self.batch_size):
-            # samples in a given batch use a random (valid) start year
-            # don't allow the last year as we need it for loss
-            start_y = random.choice(self.valid_years[:-self.num_years])
-            # TODO: add logic to correctly calculate reference year for a RNN
-            tgt_y = start_y + self.num_years
-            # use the given xy coordinate and area size and window size (TODO: handle wrapping)
+            # pick an xy that doesn't fall off the edge (TODO: handle wrapping)
             # check if any of the window is in the ocean (coastlines are not straight)
-            # this assumes that valid values for the first layer are valid for all layers and years
+            #
+            # this assumes that valid values for the first layer are valid for all
             window_data = np.nan
-            #lat, lon = self.land_xy
-            print('land_xy ', self.land_xy)
-            lat = self.land_xy[0][0]
-            lon = self.land_xy[0][1]
-            print(lat, lon)
-            layer_data = self.layer_data[start_y][self.layers[0]]
-            window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
-                                        (lon - self.window_size) : (lon + self.combined_size)]
+            while np.isnan(window_data).any():
+                lat, lon = random.choice(self.land_xys)
+                layer_data = self.layer_data[start_y][self.layers[0]]
+                window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
+                                            (lon - self.window_size) : (lon + self.window_size + 1)]
+
             for ref_y in range(start_y, tgt_y):
                 tostack = []
                 for l in self.layers:
                     layer_data = self.layer_data[ref_y][l]
-                    window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
-                                                (lon - self.window_size) : (lon + self.combined_size)]
-                    window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
-                    tostack.append(window_data)
+                    window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
+                                            (lon - self.window_size) : (lon + self.window_size + 1)]
+                    tostack.append(window_data.astype(self.dtype))
                 # now add on extra layers, if any
                 for el in self.extra_layers:
                     if el == 'land':
-                        window_data = self.is_land[(lat - self.window_size) : (lat + self.combined_size),
-                                                   (lon - self.window_size) : (lon + self.combined_size)]
+                        window_data = self.is_land[(lat - self.window_size) : (lat + self.window_size + 1),
+                                               (lon - self.window_size) : (lon + self.window_size + 1)]
                         tostack.append(window_data.astype(self.dtype))
 
                 in_data.append(np.stack(tostack))
 
-            # we also need area-sized-location climate data for the target year
->>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
-            tostack = []
-            for l in self.layers:
-                layer_data = self.layer_data[ref_y][l]
-                window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
-                                            (lon - self.window_size) : (lon + self.combined_size)]
-                window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
-                tostack.append(window_data)
-            # now add on extra layers, if any
-            for el in self.extra_layers:
-                if el == 'land':
-                    window_data = self.is_land[(lat - self.window_size) : (lat + self.combined_size),
-                                               (lon - self.window_size) : (lon + self.combined_size)]
-                    tostack.append(window_data.astype(self.dtype))
-
-            in_data.append(np.stack(tostack))
-
-        # we also need area-sized-location climate data for the target year
-        tostack = []
-        for l in self.layers:
-            layer_data = self.layer_data[tgt_y][l]
-            window_data = layer_data[:, lat : lat + self.area_size,
-                                        lon : lon + self.area_size]
-            window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
-            tostack.append(window_data)
-
-        tgt_data.append(np.stack(tostack))
+            # we also need single-location climate data for the target year
+            tgt_data.append([ self.layer_data[tgt_y][l][:, lat, lon] for l in self.layers ])
 
         # stack/numpy-ify everything
-        in_data = np.stack(in_data, axis=-1)
-        in_data = in_data.reshape(1, self.total_size, self.total_size, self.num_input_layers() * 12 * self.num_years)
-        tgt_data = np.stack(tgt_data, axis=-1)
-        # add a dummy axis at -1 for distributed purposes
-        tgt_data = tgt_data.reshape(1, self.area_size ** 2, 12, self.num_input_layers(), 1)
+        in_data = np.stack(in_data)
+        tgt_data = np.array(tgt_data, dtype=self.dtype)
 
-<<<<<<< HEAD
-        # also return [None] to supress the erroneous warning about sample weights
-        return in_data, tgt_data, [None]
-=======
         return in_data, tgt_data
-
     def climate_data(self):
         '''
         Creates climate data for each point we are interested in
-        returns XxLX12 matrix where X is the number of points in land_xy and L is   the number of layers
+        returns XxLx12 matrix where X is the number of points in land_xy and L is   the number of layers
         '''
         climate_data = []
         for lat, lon in self.land_xy:
@@ -323,4 +301,3 @@ class DataReader(keras.utils.Sequence):
             climate_data.append(pointclim)
 
         return np.array(climate_data)
->>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
