@@ -84,7 +84,7 @@ with mirrored_strategy.scope():
                                     reader.window_diam,
                                     args.area,
                                     args.years)
-    opt = keras.optimizers.SGD(lr=args.lr)
+    opt = keras.optimizers.SGD(lr=lr)
     loss = keras.losses.MeanSquaredError()
 
 model.compile(loss=loss, optimizer=opt)
