@@ -7,7 +7,6 @@ import csv
 import re
 import random
 import warnings
-import sys
 
 class DataReader:
     def __init__(self, verbose=False):
@@ -16,7 +15,7 @@ class DataReader:
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-        #self.layers = ['prcptn']
+        self.layers = ['prcptn', 'def']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -66,7 +65,6 @@ class DataReader:
         '''
         self.layer_data = {}
         self.valid_years = []
-        total_size = 0
         for y in years:
             layers = {}
             for l in self.layers:
@@ -84,7 +82,6 @@ class DataReader:
                     if s != (12, lat_points, lon_points):
                         raise ValueError(f'wrong data shape: {s}')
                     layers[l] = data
-                    total_size += sys.getsizeof(data)
                 except Exception as e:
                     print(f'FAILED to read "{layer_file}": {e}')
                     print(f'{y} skipped')
@@ -96,8 +93,6 @@ class DataReader:
                 self.valid_years.append(y)
         self.valid_years.sort()
         print(f'valid years: {self.valid_years}')
-        print(f'total mem size: {total_size}')
-        #print(gs.get_size(self.layer_data))
 
     def get_rectangular_indices(self, subregion):
         # returns the coordinate indices to the given lat and lon *integer* ranges
@@ -138,13 +133,12 @@ class DataReader:
         elif point is not None:
             lat_idx, lon_idx = self.get_single_point_indices(point)
             self.apply_idx_restriction_to_xy_coords(lat_idx, lat_idx, lon_idx, lon_idx)
-        self.land_xys = list(zip(*self.is_land.nonzero()))
-        #self.land_xys = list(zip(*([self.is_land.nonzero()[0][0]], [self.is_land.nonzero()[1][0]])))
-        print(f'{len(self.land_xys)} points found on land')
+        self.land_xy = list(zip(*self.is_land.nonzero()))
+        print(f'{len(self.land_xy)} points found on land')
 
     def save_land(self, land_xy_file):
         try:
-            np.save(land_xy_file, self.land_xys)
+            np.save(land_xy_file, self.land_xy)
             if self.verbose:
                 print('saved land xy data to "{}"'.format(land_xy_file))
         except Exception as e:
@@ -152,13 +146,13 @@ class DataReader:
 
     def load_land_file(self, land_xy_file, lat_points, lon_points):
         try:
-            self.land_xys = np.load(land_xy_file)
+            self.land_xy = np.load(land_xy_file)
             if self.verbose:
-                print('{} points loaded from file'.format(len(self.land_xys)))
+                print('{} points loaded from file'.format(len(self.land_xy)))
             self.is_land = np.full((lat_points, lon_points), False)
-            self.is_land[self.land_xys[:, 0], self.land_xys[:, 1]] = True
-            self.land_xys = self.land_xys.T
-            self.land_xys = list(zip(self.land_xys[0], self.land_xys[1]))
+            self.is_land[self.land_xy[:, 0], self.land_xy[:, 1]] = True
+            self.land_xy = self.land_xy.T
+            self.land_xy = list(zip(self.land_xy[0], self.land_xy[1]))
         except FileNotFoundError:
             pass
 
@@ -168,19 +162,23 @@ class DataReader:
         years = self.scan_input_dir(data_root, year_min, year_max, years_only)
         self.validate_years(data_root, years, lat_points, lon_points)
         # read or generate list of land xy locations
-        self.land_xys = None
+        self.land_xy = None
         if land_xy_file: self.load_land_file(land_xy_file, lat_points, lon_points)
-        if self.land_xys is None: #the previous line would have updated self.land_xys if a file existed
+        if self.land_xy is None: #the previous line would have updated self.land_xy if a file existed
             self.compute_land_file(lat_points, subregion, point)
             if land_xy_file: self.save_land(land_xy_file)
-        #print(self.land_xys)
-        #print(type(self.land_xys))
 
-    def configure_batch(self, batch_size, window_size, dtype):
+    def configure_batch(self, batch_size, window_size, area_size, num_years, dtype):
         self.batch_size = batch_size
         self.window_size = window_size
+        self.window_diam = 2 * window_size + 1
+        self.area_size = area_size
+        self.combined_size = self.area_size + self.window_size
+        self.total_size = self.window_diam + self.area_size - 1
+        self.num_years = num_years
         self.dtype = dtype
 
+<<<<<<< HEAD
     def next_batch(self, ny):
         # samples in a given batch will always use the same reference year
         # don't allow the last year as we need it for loss
@@ -188,25 +186,39 @@ class DataReader:
         # TODO: add logic to correctly calculate reference year for a RNN
         tgt_y = start_y + ny
 
+=======
+    def next_batch(self):
+>>>>>>> 5d6dad169f9c269d2aedac9a39e72fcab4898060
         in_data = []
         tgt_data = []
-
         for b in range(self.batch_size):
-            # pick an xy that doesn't fall off the edge (TODO: handle wrapping)
+            # samples in a given batch use a random (valid) start year
+            # don't allow the last year as we need it for loss
+            start_y = random.choice(self.valid_years[:-self.num_years])
+            # TODO: add logic to correctly calculate reference year for a RNN
+            tgt_y = start_y + self.num_years
+            # use the given xy coordinate and area size and window size (TODO: handle wrapping)
             # check if any of the window is in the ocean (coastlines are not straight)
-            #
-            # this assumes that valid values for the first layer are valid for all
+            # this assumes that valid values for the first layer are valid for all layers and years
             window_data = np.nan
+<<<<<<< HEAD
             while np.isnan(window_data).any():
                 lat, lon = random.choice(self.land_xys)
                 layer_data = self.layer_data[start_y][self.layers[0]]
                 window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
                                             (lon - self.window_size) : (lon + self.window_size + 1)]
 
+=======
+            lat, lon = self.land_xy[0]
+            layer_data = self.layer_data[start_y][self.layers[0]]
+            window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
+                                        (lon - self.window_size) : (lon + self.combined_size)]
+>>>>>>> 5d6dad169f9c269d2aedac9a39e72fcab4898060
             for ref_y in range(start_y, tgt_y):
                 tostack = []
                 for l in self.layers:
                     layer_data = self.layer_data[ref_y][l]
+<<<<<<< HEAD
                     window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
                                             (lon - self.window_size) : (lon + self.window_size + 1)]
                     tostack.append(window_data.astype(self.dtype))
@@ -215,15 +227,46 @@ class DataReader:
                     if el == 'land':
                         window_data = self.is_land[(lat - self.window_size) : (lat + self.window_size + 1),
                                                (lon - self.window_size) : (lon + self.window_size + 1)]
+=======
+                    window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
+                                                (lon - self.window_size) : (lon + self.combined_size)]
+                    window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
+                    tostack.append(window_data)
+                # now add on extra layers, if any
+                for el in self.extra_layers:
+                    if el == 'land':
+                        window_data = self.is_land[(lat - self.window_size) : (lat + self.combined_size),
+                                                   (lon - self.window_size) : (lon + self.combined_size)]
+>>>>>>> 5d6dad169f9c269d2aedac9a39e72fcab4898060
                         tostack.append(window_data.astype(self.dtype))
 
                 in_data.append(np.stack(tostack))
 
+<<<<<<< HEAD
             # we also need single-location climate data for the target year
             tgt_data.append([ self.layer_data[tgt_y][l][:, lat, lon] for l in self.layers ])
+=======
+            # we also need area-sized-location climate data for the target year
+            tostack = []
+            for l in self.layers:
+                layer_data = self.layer_data[tgt_y][l]
+                window_data = layer_data[:, lat : lat + self.area_size,
+                                            lon : lon + self.area_size]
+                window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
+                tostack.append(window_data)
+
+            tgt_data.append(np.stack(tostack))
+>>>>>>> 5d6dad169f9c269d2aedac9a39e72fcab4898060
 
         # stack/numpy-ify everything
-        in_data = np.stack(in_data)
-        tgt_data = np.array(tgt_data, dtype=self.dtype)
+        in_data = np.stack(in_data, axis=-1)
+        print(in_data.shape)
+        in_data = in_data.reshape(self.batch_size, self.total_size, self.total_size,
+                                  self.num_input_layers() * 12 * self.num_years)
+        print(in_data.shape)
+        tgt_data = np.stack(tgt_data, axis=-1)
+        #print(tgt_data.shape)
+        tgt_data = tgt_data.reshape(self.batch_size, self.area_size ** 2, 12, self.num_input_layers())
+        #print(tgt_data.shape)
 
         return in_data, tgt_data
