@@ -11,7 +11,7 @@ from tensorflow.keras import models, layers, optimizers
 from reader_fp import DataReader
 import argparse
 import time
-import os
+
 
 def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, area_size, nyears):
     input_shape = (area_size + window_diam - 1, area_size + window_diam - 1, nyears * 12 * num_input_layers)
@@ -22,7 +22,7 @@ def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, ar
     model.add(layers.Dense(64, activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Dense(area_size**2 * 12 * num_output_layers))
-    model.add(layers.Reshape((area_size**2, num_output_layers, 12)))
+    model.add(layers.Reshape((area_size**2, 12, num_output_layers)))
     print(model.summary())
     return model
 
@@ -43,7 +43,7 @@ parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Pro
                     help='path to dataset')
 parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/paris.npy',
                     help='path to list of land coordinates')
-parser.add_argument('-b', '--batch', type=int, default=1,
+parser.add_argument('-b', '--batch', type=int, default=2,
                     help='training batch size')
 parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
@@ -52,7 +52,7 @@ parser.add_argument('-g', '--area', type=int, default=3,
 parser.add_argument('-y', '--years', type=int, default=10,
                     help='number of inputs years')
 parser.add_argument('-n', '--num-iterations', type=int, default=100,
-                    help='number of iterations to run')
+                    help='number of batches to use for training')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
 parser.add_argument('-v', '--verbose', action='store_true',
@@ -120,7 +120,7 @@ for i in range(args.area**2):
         print('')
 
 # try to predict the following year
-print('** using the model to predict the following year **')
+print('** using the model to predict a different year **')
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
                        year_min=1990,
