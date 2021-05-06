@@ -20,9 +20,9 @@ version = '1'
 def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, area_size, nyears):
     input_shape = (area_size + window_diam - 1, area_size + window_diam - 1, nyears * 12 * num_input_layers)
     model = models.Sequential()
-    model.add(layers.Conv2D(filters=32, kernel_size=3, activation='relu', input_shape=input_shape)
+    model.add(layers.Conv2D(filters=32, kernel_size=3, activation='relu', input_shape=input_shape))
     model.add(layers.BatchNormalization())
-    model.add(layers.Conv2D(filters=64, kernel_size=3, activation='relu')
+    model.add(layers.Conv2D(filters=64, kernel_size=3, activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Flatten())
     model.add(layers.Dense(256, activation='relu'))
