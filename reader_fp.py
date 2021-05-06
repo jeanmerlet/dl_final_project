@@ -11,7 +11,7 @@ import warnings
 
 class DataReader:
     '''
-    Basic data reader for non-distributed CNN
+    Basic data reader for non-distributed CNN and RNN
     '''
     def __init__(self, verbose=False):
         self.verbose = verbose
@@ -304,7 +304,10 @@ class DataReader:
         return np.array(climate_data)
 
 
-class CNNDataReader(keras.utils.Sequence):
+class DistributedDataReader(keras.utils.Sequence):
+    '''
+    Data reader for distributed CNN and RNN
+    '''
     def __init__(self, verbose=False):
         self.verbose = verbose
         # these are layers we'll read from the netcdf files

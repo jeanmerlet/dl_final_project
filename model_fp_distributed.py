@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import models, layers, optimizers
-from reader_fp import CNNDataReader
+from reader_fp import DistributedDataReader
 import argparse
 import json
 import time
@@ -55,7 +55,7 @@ parser.add_argument('-p', '--distributed', action='store_true',
 args = parser.parse_args()
 
 # instantiate DataReader
-reader = CNNDataReader(verbose = args.verbose)
+reader = DistributedDataReader(verbose = args.verbose)
 
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,

@@ -10,7 +10,7 @@ import tensorflow as tf
 from tensorflow.keras import models, layers, optimizers
 from reader_rnn import RNNDataReader
 import argparse
-import time
+
 
 def basic_cnn(num_input_layers, num_output_layers, window_diam, nyears):
     model = models.Sequential()
@@ -24,11 +24,11 @@ def basic_cnn(num_input_layers, num_output_layers, window_diam, nyears):
     print(model.summary())
     return model
 
-def basic_rnn(hidden_layer, steps, lr):
+def basic_rnn(hidden_layer, steps, input_vals, lr, num_layers):
     model = models.Sequential()
-    model.add(layers.SimpleRNN(units = hidden_layer, input_shape = (1,steps), activation = 'relu'))
+    model.add(layers.SimpleRNN(units = hidden_layer, input_shape = (steps,input_vals), activation = 'relu'))
     model.add(layers.Dense(12))
-    model.add(layers.Dense(1))
+    model.add(layers.Dense(num_layers))
     optimizer = optimizers.Adam(lr = lr)
     model.compile(loss='mean_squared_error', optimizer=optimizer)
     print(model.summary())
@@ -41,7 +41,7 @@ parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Per
                     help='path to list of land coordinates')
 parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
-parser.add_argument('-w', '--window', type=int, default=3,
+parser.add_argument('-w', '--window', type=int, default=5,
                     help='geographic window size')
 parser.add_argument('-n', '--num-iterations', type=int, default=100,
                     help='number of batches to use for training')
@@ -58,65 +58,61 @@ reader = RNNDataReader(verbose = args.verbose)
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       year_min = 1980, year_max = 1990,
-                       point = (48.86, 2.34))
-                       #subregion = [[43, 49], [-2, 7]])
+                       year_min = 1958, year_max = 2006,
+                       #point = (48.86, 2.34)) #Paris
+                       #point = (24.77, 46.74)) #Riyadh
+                       #point = (35.96, -83.92)) #Knoxville
+                       point = (-33.87, 151.21)) #Sydney
+                       #point = (39.54, 116.21)) #Beijing
+                       #point = (-1.29, 36.82)) #Nairobi
+
 # configure batches
 reader.configure_batch(batch_size = args.batch,
                        window_size = args.window,
                        dtype = np.float32)
 
-#find data
-batch_data, target_data = reader.rnn_data(args.step)
-model = basic_rnn(100, args.step, args.lr)
-model.fit(batch_data,target_data, epochs=100, batch_size=16, verbose=1)
-'''
-# create model
-window_diam = 2 * args.window + 1
-model = basic_cnn(reader.num_input_layers(),
-                  reader.num_output_layers(),
-                  window_diam, args.years)
-loss = tf.keras.losses.MeanSquaredError()
-opt = tf.keras.optimizers.SGD(lr=args.lr)
-model.compile(loss=loss, optimizer=opt)
-
-# train
-start = time.time()
-for n in range(args.num_iterations):
-    batch_data, target_data = reader.next_batch(args.years)
-    batch_data = batch_data.reshape(1, window_diam, window_diam, args.years*12*reader.num_input_layers())
-    with tf.GradientTape() as tape:
-        logits = model(batch_data, training=True)
-        loss_value = loss(target_data, logits)
-    grads = tape.gradient(loss_value, model.trainable_weights)
-    opt.apply_gradients(zip(grads, model.trainable_weights))
-    print(f'iteration {n}/{args.num_iterations}, loss={loss_value}')
-
-print(f'total train time: {time.time() - start}')
-
 np.set_printoptions(suppress=True)
-predictions = np.round(model.predict(batch_data), 2)
-for i, l in enumerate(reader.layers):
-    print(f'predictions for {l}:')
-    print(predictions[:, i, :])
-    print(f'ground truth for {l}:')
-    print(target_data[:, i, :])
-    print('')
 
-# try to predict the following year
-#print('** using the model to predict the following year **')
-#reader.scan_input_data(data_root = args.data,
-#                       land_xy_file = args.land,
-#                       years_only = [1989, 1990],
-#                       subregion=[[0, 4], [46, 50]])
-#batch_data, target_data = reader.next_batch()
-#batch_data = batch_data.reshape(1, window_diam, window_diam, 12*reader.num_input_layers())
-#predictions = np.round(model.predict(batch_data), 2)
+# find data
+def scheduler(epoch, lr):
+    if epoch % 20 == 0: return lr * 0.5
+    return lr
 
-for i, l in enumerate(reader.layers):
-    print(f'predictions for {l}:')
-    print(predictions[:, i, :])
-    print(f'ground truth for {l}:')
-    print(target_data[:, i, :])
-    print('')
-'''
+callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
+
+batch_data, target_data = reader.rnn_data(args.step)
+print(np.array(batch_data).shape)
+print(np.array(target_data).shape)
+input_vals = batch_data.shape[2]
+model = basic_rnn(300, args.step, input_vals, args.lr, reader.num_input_layers())
+history = model.fit(batch_data,target_data, epochs=100, batch_size=16, verbose=1, callbacks = [callback])
+loss = np.array(history.history['loss'])
+print(loss)
+
+
+validation = RNNDataReader(verbose = args.verbose)
+
+# create and/or load .npy xy-coordinate file
+validation.scan_input_data(data_root = args.data,
+                       land_xy_file = args.land,
+                       year_min = 2007, year_max = 2017,
+                       #point = (48.86, 2.34)) #Paris
+                       #point = (24.77, 46.74)) #Riyadh
+                       #point = (35.96, -83.92)) #Knoxville
+                       point = (-33.87, 151.21)) #Sydney
+                       #point = (39.54, 116.21)) #Beijing
+                       #point = (-1.29, 36.82)) #Nairobi
+
+
+validation.configure_batch(batch_size = args.batch,
+                       window_size = args.window,
+                       dtype = np.float32)
+print('predicting')
+test_dat, truth = validation.rnn_data(args.step)
+outs = model.predict(test_dat)
+print(f'output: {outs}')
+print(f'ground truth: {truth}')
+print(outs.shape)
+np.save('outputs/Sydneytruth.npy', truth)
+np.save('outputs/Sydneyloss.npy', loss)
+np.save('outputs/Sydneypreds.npy', outs)
