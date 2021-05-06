@@ -84,9 +84,7 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 # create model
 window_diam = 2 * args.window + 1
-# model = basic_cnn(reader.num_input_layers(),
-#                   reader.num_output_layers(),
-#                   window_diam, args.years)
+
 model = n_years_to_one_year_cnn(reader.num_input_layers(),
                                 reader.num_output_layers(),
                                 window_diam,

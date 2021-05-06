@@ -33,6 +33,7 @@ def basic_rnn(hidden_layer, steps, lr):
     model.compile(loss='mean_squared_error', optimizer=optimizer)
     print(model.summary())
     return model
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Projects/NV_ORNL_XAIClimate/data/climate_layers/primary/TerraClim',
                     help='path to dataset')
