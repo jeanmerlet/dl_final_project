@@ -16,7 +16,7 @@ class DataReader:
         self.layers = ['def', 'pdsi', 'prcptn',
                        'soil', 'swe', 'srad',
                        'vap', 'windspeed' ]
-        self.layers = ['prcptn', 'vap']
+        #self.layers = ['prcptn', 'vap']
         # these are layers we'll add on ourselves
         self.extra_layers = ['land']
         self.extra_layers = []
@@ -138,13 +138,13 @@ class DataReader:
         elif point is not None:
             lat_idx, lon_idx = self.get_single_point_indices(point)
             self.apply_idx_restriction_to_xy_coords(lat_idx, lat_idx, lon_idx, lon_idx)
-        self.land_xys = list(zip(*self.is_land.nonzero()))
+        self.land_xy = list(zip(*self.is_land.nonzero()))
         #self.land_xys = list(zip(*([self.is_land.nonzero()[0][0]], [self.is_land.nonzero()[1][0]])))
-        print(f'{len(self.land_xys)} points found on land')
+        print(f'{len(self.land_xy)} points found on land')
 
     def save_land(self, land_xy_file):
         try:
-            np.save(land_xy_file, self.land_xys)
+            np.save(land_xy_file, self.land_xy)
             if self.verbose:
                 print('saved land xy data to "{}"'.format(land_xy_file))
         except Exception as e:
@@ -152,13 +152,13 @@ class DataReader:
 
     def load_land_file(self, land_xy_file, lat_points, lon_points):
         try:
-            self.land_xys = np.load(land_xy_file)
+            self.land_xy = np.load(land_xy_file)
             if self.verbose:
-                print('{} points loaded from file'.format(len(self.land_xys)))
+                print('{} points loaded from file'.format(len(self.land_xy)))
             self.is_land = np.full((lat_points, lon_points), False)
-            self.is_land[self.land_xys[:, 0], self.land_xys[:, 1]] = True
-            self.land_xys = self.land_xys.T
-            self.land_xys = list(zip(self.land_xys[0], self.land_xys[1]))
+            self.is_land[self.land_xy[:, 0], self.land_xy[:, 1]] = True
+            self.land_xy = self.land_xy.T
+            self.land_xy = list(zip(self.land_xy[0], self.land_xy[1]))
         except FileNotFoundError:
             pass
 
@@ -168,13 +168,13 @@ class DataReader:
         years = self.scan_input_dir(data_root, year_min, year_max, years_only)
         self.validate_years(data_root, years, lat_points, lon_points)
         # read or generate list of land xy locations
-        self.land_xys = None
+        self.land_xy = None
         if land_xy_file: self.load_land_file(land_xy_file, lat_points, lon_points)
-        if self.land_xys is None: #the previous line would have updated self.land_xys if a file existed
+        if self.land_xy is None: #the previous line would have updated self.land_xys if a file existed
             self.compute_land_file(lat_points, subregion, point)
             if land_xy_file: self.save_land(land_xy_file)
-        #print(self.land_xys)
-        #print(type(self.land_xys))
+        #print(self.land_xy)
+        #print(type(self.land_xy))
 
     def configure_batch(self, batch_size, window_size, dtype):
         self.batch_size = batch_size
@@ -196,7 +196,7 @@ class DataReader:
         in_dat = []
         tgt_dat = []
         # while np.isnan(window_data).any():
-        lat, lon = random.choice(self.land_xys)
+        lat, lon = random.choice(self.land_xy)
         layer_data = self.layer_data[start_y][self.layers[0]]
         window_data = layer_data[:, lat, lon]
         
@@ -250,7 +250,7 @@ class DataReader:
             # this assumes that valid values for the first layer are valid for all
             window_data = np.nan
             while np.isnan(window_data).any():
-                lat, lon = random.choice(self.land_xys)
+                lat, lon = random.choice(self.land_xy)
                 layer_data = self.layer_data[start_y][self.layers[0]]
                 window_data = layer_data[:, (lat - self.window_size) : (lat + self.window_size + 1),
                                             (lon - self.window_size) : (lon + self.window_size + 1)]
