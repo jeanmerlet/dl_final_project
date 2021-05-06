@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # before we do much of anything, disable writing bytecode, as that suffers
-#  from race conditions with distributed jobs on shared file systems
+# from race conditions with distributed jobs on shared file systems
 import sys
 sys.dont_write_bytecode = True
 
@@ -22,7 +22,7 @@ def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, ar
     model.add(layers.Dense(64, activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Dense(area_size**2 * 12 * num_output_layers))
-    model.add(layers.Reshape((area_size**2, num_output_layers, 12)))
+    model.add(layers.Reshape((area_size**2, 12, num_output_layers)))
     print(model.summary())
     return model
 
@@ -47,29 +47,38 @@ parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
 parser.add_argument('-w', '--window', type=int, default=3,
                     help='geographic window size')
-parser.add_argument('-g', '--area', type=int, default=3,
+parser.add_argument('-a', '--area', type=int, default=3,
                     help='area size')
-parser.add_argument('-y', '--years', type=int, default=10,
+parser.add_argument('-y', '--years', type=int, default=5,
                     help='number of inputs years')
+<<<<<<< HEAD
+parser.add_argument('-n', '--num-iterations', type=int, default=10,
+                    help='number of iterations to run')
+=======
 parser.add_argument('-n', '--num-iterations', type=int, default=100,
                     help='number of batches to use for training')
+>>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
 parser.add_argument('--lr', type=float, default=0.01,
                     help='(fixed) learning rate')
 parser.add_argument('-v', '--verbose', action='store_true',
                     help='generate verbose output')
+<<<<<<< HEAD
+parser.add_argument('-p', '--distributed', action='store_true',
+                    help='enable distributed learning')
+=======
 #parser.add_argument('-y', '--years', type=int, default=1, help = 'number of years for training data')
 
+>>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
 args = parser.parse_args()
 
 # instantiate DataReader
 reader = DataReader(verbose = args.verbose)
+
 # create and/or load .npy xy-coordinate file
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       #years_only = [1988, 1989],
                        year_min=1960,
                        year_max=1980,
-                       #subregion = [[43, 49], [-2, 7]])
                        point = (48.86, 2.34))
 
 # configure batches
@@ -79,7 +88,24 @@ reader.configure_batch(batch_size = args.batch,
                        num_years = args.years,
                        dtype = np.float32)
 
+# distribution for multiple GPUs on one node
+mirrored_strategy = tf.distribute.MirroredStrategy()
+num_gpus = mirrored_strategy.num_replicas_in_sync
+lr = args.lr * num_gpus
+print("Num GPUs Available: ", num_gpus)
+
 # create model
+<<<<<<< HEAD
+with mirrored_strategy.scope():
+    model = n_years_to_one_year_cnn(reader.num_input_layers(),
+                                    reader.num_output_layers(),
+                                    reader.window_diam,
+                                    args.area,
+                                    args.years)
+    opt = keras.optimizers.SGD(lr=args.lr)
+    loss = keras.losses.MeanSquaredError()
+
+=======
 window_diam = 2 * args.window + 1
 # model = basic_cnn(reader.num_input_layers(),
 #                   reader.num_output_layers(),
@@ -91,10 +117,14 @@ model = n_years_to_one_year_cnn(reader.num_input_layers(),
                                 args.years)
 loss = tf.keras.losses.MeanSquaredError()
 opt = tf.keras.optimizers.SGD(lr=args.lr)
+>>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
 model.compile(loss=loss, optimizer=opt)
 
 # train
 start = time.time()
+<<<<<<< HEAD
+model.fit(x=reader, epochs=args.num_iterations)
+=======
 for n in range(args.num_iterations):
     batch_data, target_data = reader.next_batch(args.years)
     batch_data = batch_data.reshape(1, window_diam, window_diam, args.years*12*reader.num_input_layers())
@@ -105,9 +135,11 @@ for n in range(args.num_iterations):
     opt.apply_gradients(zip(grads, model.trainable_weights))
     print(f'iteration {n}/{args.num_iterations}, loss={loss_value}')
 
+>>>>>>> bd528ef034e2492754c12b1a9b7da49d43987809
 print(f'total train time: {round(time.time() - start, 2)}')
 
 np.set_printoptions(suppress=True)
+batch_data, target_data, _ = reader.__getitem__()
 predictions = np.round(model.predict(batch_data), 2)
 for i in range(args.area**2):
     for j, l in enumerate(reader.layers):
@@ -118,16 +150,14 @@ for i in range(args.area**2):
         print('')
 
 # try to predict the following year
-print('** using the model to predict the following year **')
+print('** using the model to predict a different year **')
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
-                       #years_only = [1988, 1989],
                        year_min=1990,
                        year_max=2000,
-                       #subregion = [[43, 49], [-2, 7]])
                        point = (48.86, 2.34))
 
-batch_data, target_data = reader.next_batch()
+batch_data, target_data, _ = reader.__getitem__()
 predictions = np.round(model.predict(batch_data), 2)
 for i in range(args.area**2):
     for j, l in enumerate(reader.layers):
