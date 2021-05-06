@@ -184,7 +184,6 @@ class CNNDataReader(keras.utils.Sequence):
 
     def __getitem__(self, index=None):
         in_data = []
-        tgt_data = []
         # samples in a given batch use a random (valid) start year
         # don't allow the last year as we need it for loss
         start_y = random.choice(self.valid_years[:-self.num_years])
@@ -204,14 +203,8 @@ class CNNDataReader(keras.utils.Sequence):
                 layer_data = self.layer_data[ref_y][l]
                 window_data = layer_data[:, (lat - self.window_size) : (lat + self.combined_size),
                                             (lon - self.window_size) : (lon + self.combined_size)]
-                window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
+                window_data = np.array(window_data, dtype=self.dtype)
                 tostack.append(window_data)
-            # now add on extra layers, if any
-            for el in self.extra_layers:
-                if el == 'land':
-                    window_data = self.is_land[(lat - self.window_size) : (lat + self.combined_size),
-                                               (lon - self.window_size) : (lon + self.combined_size)]
-                    tostack.append(window_data.astype(self.dtype))
 
             in_data.append(np.stack(tostack))
 
@@ -221,17 +214,19 @@ class CNNDataReader(keras.utils.Sequence):
             layer_data = self.layer_data[tgt_y][l]
             window_data = layer_data[:, lat : lat + self.area_size,
                                         lon : lon + self.area_size]
-            window_data = np.array(window_data, dtype=self.dtype).swapaxes(0, 2).swapaxes(0, 1)
+            window_data = np.array(window_data, dtype=self.dtype)
             tostack.append(window_data)
 
-        tgt_data.append(np.stack(tostack))
+        tgt_data = np.stack(tostack)
 
         # stack/numpy-ify everything
-        in_data = np.stack(in_data, axis=-1)
-        in_data = in_data.reshape(1, self.total_size, self.total_size, self.num_input_layers() * 12 * self.num_years)
-        tgt_data = np.stack(tgt_data, axis=-1)
+        in_data = np.array(in_data, dtype=self.dtype)
+        in_data = np.moveaxis(np.moveaxis(in_data, -1, 0), -1, 0)
+        in_data = in_data.reshape(1, self.total_size, self.total_size, self.num_years * self.num_input_layers() * 12)
         # add a dummy axis at -1 for distributed purposes
-        tgt_data = tgt_data.reshape(1, self.area_size ** 2, 12, self.num_input_layers(), 1)
+        tgt_data = np.array(tgt_data, dtype=self.dtype)
+        tgt_data = np.moveaxis(np.moveaxis(tgt_data, -1, 0), -1, 0)
+        tgt_data = tgt_data.reshape(1, self.area_size**2, self.num_input_layers(), 12, 1)
 
         # also return [None] to supress the erroneous warning about sample weights
         return in_data, tgt_data, [None]
