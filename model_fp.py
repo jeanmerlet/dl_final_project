@@ -14,7 +14,6 @@ import argparse
 import json
 import time
 import os
-
 version = '1'
 
 def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, area_size, nyears):
@@ -35,7 +34,7 @@ def n_years_to_one_year_cnn(num_input_layers, num_output_layers, window_diam, ar
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', default='/gpfs/alpine/syb105/proj-shared/Projects/NV_ORNL_XAIClimate/data/climate_layers/primary/TerraClim',
                     help='path to dataset')
-parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/knoxville.npy',
+parser.add_argument('-l', '--land', default='/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/data/land_coords/paris.npy',
                     help='path to list of land coordinates')
 parser.add_argument('-b', '--batch', type=int, default=1,
                     help='training batch size')
@@ -73,7 +72,7 @@ reader.configure_batch(batch_size = args.batch,
                        dtype = np.float32)
 
 log_dir = '/gpfs/alpine/syb105/proj-shared/Personal/jmerlet/projects/climatypes/scripts/models/merlet_final/dl_final_project/logs'
-loss_filename = f'cnn_lr{args.lr}_area{args.area}_window{args.window}_years{args.years}_layers{reader.num_input_layers()}_knoxville_steplr_v' + version + '_loss.npy'
+loss_filename = f'cnn_lr{args.lr}_area{args.area}_window{args.window}_years{args.years}_layers{reader.num_input_layers()}_paris_steplr_v' + version + '_loss.npy'
 
 # distribution for multiple GPUs on one node
 mirrored_strategy = tf.distribute.MirroredStrategy()
@@ -122,7 +121,7 @@ for i in range(args.area**2):
 # and save prediction and ground truth as np arrays
 # in the shape (2, num_points, num_layers, 12)
 year_min, year_max = 2007, 2017
-val_filename = f'cnn_lr{args.lr}_area{args.area}_window{args.window}_years{args.years}_layers{reader.num_input_layers()}_knoxville_steplr_v' + version + '_val.npy'
+val_filename = f'cnn_lr{args.lr}_area{args.area}_window{args.window}_years{args.years}_layers{reader.num_input_layers()}_paris_steplr_v' + version + '_val.npy'
 print('** using the model to predict a different year **')
 reader.scan_input_data(data_root = args.data,
                        land_xy_file = args.land,
